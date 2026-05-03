@@ -23,6 +23,8 @@ function init() {
 
   loadGsiScript();
 
+  restoreSession();
+
   document.getElementById('signin-btn').addEventListener('click', handleSignIn);
   document.getElementById('signout-btn').addEventListener('click', handleSignOut);
   document.getElementById('calculate-btn').addEventListener('click', calculateHours);
@@ -48,6 +50,27 @@ function initTokenClient() {
   });
 }
 
+function restoreSession() {
+  const saved = localStorage.getItem('gcal_token');
+  if (!saved) return;
+  const { token, expiry } = JSON.parse(saved);
+  if (Date.now() > expiry) {
+    localStorage.removeItem('gcal_token');
+    return;
+  }
+  accessToken = token;
+  onSignedIn();
+}
+
+function saveSession(token, expiresIn) {
+  const expiry = Date.now() + expiresIn * 1000;
+  localStorage.setItem('gcal_token', JSON.stringify({ token, expiry }));
+}
+
+function clearSession() {
+  localStorage.removeItem('gcal_token');
+}
+
 function handleSignIn() {
   tokenClient.requestAccessToken();
 }
@@ -59,7 +82,11 @@ function handleTokenResponse(response) {
   }
 
   accessToken = response.access_token;
+  saveSession(response.access_token, response.expires_in);
+  onSignedIn();
+}
 
+function onSignedIn() {
   fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: 'Bearer ' + accessToken },
   })
@@ -103,6 +130,7 @@ function handleSignOut() {
     google.accounts.oauth2.revoke(accessToken);
   }
   accessToken = null;
+  clearSession();
   document.getElementById('signin-btn').style.display = '';
   document.getElementById('user-info').classList.remove('visible');
   document.getElementById('controls').classList.remove('visible');
@@ -168,6 +196,7 @@ async function fetchAllEvents(timeMin, timeMax) {
 
     if (!res.ok) {
       if (res.status === 401) {
+        clearSession();
         accessToken = null;
         handleSignOut();
         throw new Error('Session expired. Please sign in again.');
@@ -233,9 +262,11 @@ function displayResults(workEvents) {
       const startTime = showRaw ? event.rawStart : event.start;
       const endTime = showRaw ? event.rawEnd : event.end;
       div.innerHTML =
-        '<span><span class="event-date">' + formatDate(event.date) + '</span> — ' +
-        escapeHtml(event.title) +
-        ' <span class="event-time">' + formatTime(startTime) + ' – ' + formatTime(endTime) + '</span></span>' +
+        '<div class="event-info">' +
+          '<span class="event-title">' + escapeHtml(event.title) + '</span>' +
+          '<span class="event-date">' + formatDate(event.date) + '</span>' +
+          '<span class="event-time">' + formatTime(startTime) + ' – ' + formatTime(endTime) + '</span>' +
+        '</div>' +
         '<span class="event-hours">' + formatHours(event.hours) + '</span>';
       listEl.appendChild(div);
     });

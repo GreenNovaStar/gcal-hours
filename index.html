@@ -172,20 +172,74 @@
 
     .event-item {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      padding: 8px 0;
+      padding: 10px 0;
       border-bottom: 1px solid #f0f0f0;
       font-size: 0.9rem;
+      gap: 12px;
+    }
+
+    .event-item:first-child { padding-top: 0; }
+    .event-item:last-child { border-bottom: none; padding-bottom: 0; }
+
+    .event-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .event-title {
+      font-weight: 500;
     }
 
     .raw-times-toggle {
-      text-align: right;
-      margin-bottom: 8px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #eee;
       font-size: 0.85rem;
       color: #666;
     }
 
-    .raw-times-toggle input { margin-right: 4px; }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input { display: none; }
+
+    .toggle-switch {
+      width: 36px;
+      height: 20px;
+      background: #ddd;
+      border-radius: 10px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+
+    .toggle input:checked + .toggle-switch {
+      background: #4285f4;
+    }
+
+    .toggle input:checked + .toggle-switch::after {
+      transform: translateX(16px);
+    }
 
     .event-date { color: #666; }
     .event-time { color: #999; font-size: 0.85rem; }
@@ -287,12 +341,16 @@
     <div class="error" id="error"></div>
 
     <div class="results" id="results">
-      <div class="raw-times-toggle">
-        <label><input type="checkbox" id="show-raw-times"> Show original times</label>
-      </div>
       <div class="total-hours" id="total-hours"></div>
       <div class="total-label" id="total-label"></div>
       <div class="event-list" id="event-list"></div>
+      <div class="raw-times-toggle">
+        <label class="toggle">
+          <input type="checkbox" id="show-raw-times" checked>
+          <span class="toggle-switch"></span>
+          Show original times
+        </label>
+      </div>
     </div>
   </div>
 
