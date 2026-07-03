@@ -3,6 +3,8 @@ let accessToken = null;
 let selectedYear;
 let selectedMonth;
 let lastWorkEvents = [];
+let calendars = [];
+let selectedCalendarId = null;
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -33,6 +35,32 @@ function init() {
   document.getElementById('show-raw-times').addEventListener('change', () => {
     if (lastWorkEvents.length) displayResults(lastWorkEvents);
   });
+
+  setupCalendarDropdown();
+}
+
+function setupCalendarDropdown() {
+  const dropdown = document.getElementById('calendar-dropdown');
+  const trigger = document.getElementById('calendar-trigger');
+
+  trigger.addEventListener('click', () => {
+    if (!calendars.length) return;
+    toggleCalendarMenu(!dropdown.classList.contains('open'));
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) toggleCalendarMenu(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleCalendarMenu(false);
+  });
+}
+
+function toggleCalendarMenu(open) {
+  const dropdown = document.getElementById('calendar-dropdown');
+  dropdown.classList.toggle('open', open);
+  document.getElementById('calendar-trigger').setAttribute('aria-expanded', String(open));
 }
 
 function loadGsiScript() {
@@ -108,21 +136,82 @@ async function fetchCalendars() {
     });
     if (!res.ok) throw new Error('Failed to load calendars');
     const data = await res.json();
-    const select = document.getElementById('calendar-select');
-    select.innerHTML = '';
-    (data.items || [])
-      .sort((a, b) => (a.summary || '').localeCompare(b.summary || ''))
-      .forEach(cal => {
-        const option = document.createElement('option');
-        option.value = cal.id;
-        option.textContent = cal.summary || cal.id;
-        if (cal.primary) option.selected = true;
-        select.appendChild(option);
-      });
+
+    // Primary first, then alphabetical — the primary calendar is what most people want.
+    calendars = (data.items || []).sort((a, b) => {
+      if (a.primary) return -1;
+      if (b.primary) return 1;
+      return (a.summary || '').localeCompare(b.summary || '');
+    });
+
+    // Prefer the last calendar the user picked, then their primary, then the first.
+    const remembered = localStorage.getItem('gcal_calendar_id');
+    const preferred =
+      calendars.find(c => c.id === remembered) ||
+      calendars.find(c => c.primary) ||
+      calendars[0];
+
+    if (preferred) selectCalendar(preferred.id);
+    renderCalendarMenu();
     document.getElementById('controls').classList.add('visible');
   } catch (err) {
     showError('Failed to load calendars: ' + err.message);
   }
+}
+
+function selectCalendar(id) {
+  selectedCalendarId = id;
+  localStorage.setItem('gcal_calendar_id', id);
+  const cal = calendars.find(c => c.id === id);
+  if (!cal) return;
+  document.getElementById('calendar-trigger-color').style.background =
+    cal.backgroundColor || '#4285f4';
+  document.getElementById('calendar-trigger-name').textContent = cal.summary || cal.id;
+  document.getElementById('results').classList.remove('visible');
+}
+
+function renderCalendarMenu() {
+  const menu = document.getElementById('calendar-menu');
+  menu.innerHTML = '';
+  calendars.forEach(cal => {
+    const li = document.createElement('li');
+    li.className = 'calendar-option' + (cal.id === selectedCalendarId ? ' selected' : '');
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(cal.id === selectedCalendarId));
+
+    const dot = document.createElement('span');
+    dot.className = 'cal-color';
+    dot.style.background = cal.backgroundColor || '#4285f4';
+
+    const name = document.createElement('span');
+    name.className = 'cal-name';
+    name.textContent = cal.summary || cal.id;
+
+    li.appendChild(dot);
+    li.appendChild(name);
+
+    if (cal.primary) {
+      const badge = document.createElement('span');
+      badge.className = 'cal-badge';
+      badge.textContent = 'Primary';
+      li.appendChild(badge);
+    }
+
+    if (cal.id === selectedCalendarId) {
+      const check = document.createElement('span');
+      check.className = 'cal-check';
+      check.textContent = '✓';
+      li.appendChild(check);
+    }
+
+    li.addEventListener('click', () => {
+      selectCalendar(cal.id);
+      renderCalendarMenu();
+      toggleCalendarMenu(false);
+    });
+
+    menu.appendChild(li);
+  });
 }
 
 function handleSignOut() {
@@ -135,6 +224,7 @@ function handleSignOut() {
   document.getElementById('user-info').classList.remove('visible');
   document.getElementById('controls').classList.remove('visible');
   document.getElementById('results').classList.remove('visible');
+  toggleCalendarMenu(false);
 }
 
 function updateMonthLabel() {
@@ -188,7 +278,7 @@ async function fetchAllEvents(timeMin, timeMax) {
     });
     if (pageToken) params.set('pageToken', pageToken);
 
-    const calendarId = encodeURIComponent(document.getElementById('calendar-select').value);
+    const calendarId = encodeURIComponent(selectedCalendarId);
     const url = 'https://www.googleapis.com/calendar/v3/calendars/' + calendarId + '/events?' + params;
     const res = await fetch(url, {
       headers: { Authorization: 'Bearer ' + accessToken },

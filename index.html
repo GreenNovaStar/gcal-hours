@@ -81,6 +81,7 @@
 
     .calendar-picker {
       margin-bottom: 16px;
+      text-align: left;
     }
 
     .calendar-picker label {
@@ -88,16 +89,104 @@
       font-size: 0.85rem;
       color: #666;
       margin-bottom: 4px;
+      font-weight: 600;
     }
 
-    .calendar-picker select {
+    .calendar-dropdown {
+      position: relative;
+    }
+
+    .calendar-trigger {
       width: 100%;
-      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
       border: 1px solid #ddd;
       border-radius: 6px;
-      font-size: 0.95rem;
       background: white;
       cursor: pointer;
+      font-size: 0.95rem;
+      text-align: left;
+    }
+
+    .calendar-trigger:hover { border-color: #bbb; }
+    .calendar-trigger:focus {
+      outline: none;
+      border-color: #4285f4;
+      box-shadow: 0 0 0 3px rgba(66,133,244,0.15);
+    }
+    .calendar-dropdown.open .calendar-trigger { border-color: #4285f4; }
+
+    .cal-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #4285f4;
+    }
+
+    .cal-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cal-caret {
+      color: #999;
+      font-size: 0.7rem;
+      transition: transform 0.15s;
+    }
+    .calendar-dropdown.open .cal-caret { transform: rotate(180deg); }
+
+    .calendar-menu {
+      list-style: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      max-height: 260px;
+      overflow-y: auto;
+      z-index: 10;
+      display: none;
+      padding: 4px;
+    }
+    .calendar-dropdown.open .calendar-menu { display: block; }
+
+    .calendar-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .calendar-option:hover,
+    .calendar-option.active { background: #f1f5fd; }
+    .calendar-option.selected { background: #e8f0fe; }
+
+    .cal-badge {
+      font-size: 0.7rem;
+      color: #1a73e8;
+      background: #e8f0fe;
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .cal-check {
+      margin-left: auto;
+      color: #4285f4;
+      flex-shrink: 0;
+      font-weight: 700;
     }
 
     .month-picker {
@@ -322,8 +411,16 @@
 
     <div class="controls" id="controls">
       <div class="calendar-picker">
-        <label for="calendar-select">Calendar</label>
-        <select id="calendar-select"></select>
+        <label id="calendar-label">Which calendar are your work events on?</label>
+        <div class="calendar-dropdown" id="calendar-dropdown">
+          <button type="button" class="calendar-trigger" id="calendar-trigger"
+                  aria-haspopup="listbox" aria-expanded="false" aria-labelledby="calendar-label">
+            <span class="cal-color" id="calendar-trigger-color"></span>
+            <span class="cal-name" id="calendar-trigger-name">Loading calendars…</span>
+            <span class="cal-caret">▼</span>
+          </button>
+          <ul class="calendar-menu" id="calendar-menu" role="listbox"></ul>
+        </div>
       </div>
       <div class="keyword-input">
         <label for="work-keyword">Event keyword</label>
