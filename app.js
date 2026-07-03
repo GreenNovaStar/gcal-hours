@@ -5,6 +5,7 @@ let selectedMonth;
 let lastWorkEvents = [];
 let calendars = [];
 let selectedCalendarId = null;
+const resultsCache = {};
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -33,6 +34,15 @@ function init() {
   document.getElementById('prev-month').addEventListener('click', () => changeMonth(-1));
   document.getElementById('next-month').addEventListener('click', () => changeMonth(1));
   document.getElementById('show-raw-times').addEventListener('change', () => {
+    if (lastWorkEvents.length) displayResults(lastWorkEvents);
+  });
+  document.getElementById('show-calendar').addEventListener('change', () => {
+    if (lastWorkEvents.length) displayResults(lastWorkEvents);
+  });
+  const weekStartEl = document.getElementById('week-start-monday');
+  weekStartEl.checked = localStorage.getItem('gcal_week_start') === 'monday';
+  weekStartEl.addEventListener('change', () => {
+    localStorage.setItem('gcal_week_start', weekStartEl.checked ? 'monday' : 'sunday');
     if (lastWorkEvents.length) displayResults(lastWorkEvents);
   });
 
@@ -120,7 +130,6 @@ function onSignedIn() {
   })
     .then(r => r.json())
     .then(info => {
-      document.getElementById('user-name').textContent = info.email || info.name || 'you';
       document.getElementById('user-info').classList.add('visible');
     });
 
@@ -154,6 +163,8 @@ async function fetchCalendars() {
     if (preferred) selectCalendar(preferred.id);
     renderCalendarMenu();
     document.getElementById('controls').classList.add('visible');
+    document.getElementById('two-col').classList.add('visible');
+    document.getElementById('empty-state').classList.add('visible');
   } catch (err) {
     showError('Failed to load calendars: ' + err.message);
   }
@@ -223,7 +234,10 @@ function handleSignOut() {
   document.getElementById('signin-btn').style.display = '';
   document.getElementById('user-info').classList.remove('visible');
   document.getElementById('controls').classList.remove('visible');
+  document.getElementById('two-col').classList.remove('visible');
   document.getElementById('results').classList.remove('visible');
+  document.getElementById('results-toggles').classList.remove('visible');
+  document.getElementById('empty-state').classList.remove('visible');
   toggleCalendarMenu(false);
 }
 
@@ -237,10 +251,29 @@ function changeMonth(delta) {
   if (selectedMonth > 11) { selectedMonth = 0; selectedYear++; }
   if (selectedMonth < 0) { selectedMonth = 11; selectedYear--; }
   updateMonthLabel();
-  document.getElementById('results').classList.remove('visible');
+
+  const cacheKey = getCacheKey();
+  if (resultsCache[cacheKey]) {
+    displayResults(resultsCache[cacheKey]);
+  } else {
+    document.getElementById('results').classList.remove('visible');
+    document.getElementById('results-toggles').classList.remove('visible');
+    document.getElementById('empty-state').classList.add('visible');
+  }
+}
+
+function getCacheKey() {
+  const keyword = (document.getElementById('work-keyword').value || CONFIG.WORK_KEYWORD).toLowerCase();
+  return selectedCalendarId + '|' + selectedYear + '|' + selectedMonth + '|' + keyword;
 }
 
 async function calculateHours() {
+  const cacheKey = getCacheKey();
+  if (resultsCache[cacheKey]) {
+    displayResults(resultsCache[cacheKey]);
+    return;
+  }
+
   const btn = document.getElementById('calculate-btn');
   const loading = document.getElementById('loading');
 
@@ -255,6 +288,7 @@ async function calculateHours() {
   try {
     const events = await fetchAllEvents(timeMin, timeMax);
     const workEvents = filterWorkEvents(events);
+    resultsCache[cacheKey] = workEvents;
     displayResults(workEvents);
   } catch (err) {
     showError('Failed to fetch events: ' + err.message);
@@ -339,12 +373,31 @@ function displayResults(workEvents) {
     workEvents.length + ' event' + (workEvents.length !== 1 ? 's' : '') +
     ' in ' + MONTHS[selectedMonth] + ' ' + selectedYear;
 
+  const showCalendar = document.getElementById('show-calendar').checked;
+  const miniCalEl = document.getElementById('mini-calendar');
+  const weeklyEl = document.getElementById('weekly-summary');
+
+  if (showCalendar && workEvents.length > 0) {
+    renderMiniCalendar(workEvents);
+    miniCalEl.classList.add('visible');
+  } else {
+    miniCalEl.classList.remove('visible');
+  }
+
+  renderWeeklySummary(workEvents);
+  weeklyEl.classList.toggle('visible', workEvents.length > 0);
+
   const listEl = document.getElementById('event-list');
   listEl.innerHTML = '';
 
   if (workEvents.length === 0) {
     listEl.innerHTML = '<p style="color:#666;text-align:center;padding:16px;">No matching events found.</p>';
   } else {
+    const header = document.createElement('div');
+    header.className = 'event-list-header';
+    header.innerHTML = '<h3>Events</h3>';
+    listEl.appendChild(header);
+
     workEvents.forEach(event => {
       const div = document.createElement('div');
       div.className = 'event-item';
@@ -363,6 +416,134 @@ function displayResults(workEvents) {
   }
 
   resultsEl.classList.add('visible');
+  document.getElementById('results-toggles').classList.add('visible');
+  document.getElementById('empty-state').classList.remove('visible');
+}
+
+function getWeekStartOffset() {
+  return document.getElementById('week-start-monday').checked ? 1 : 0;
+}
+
+function renderMiniCalendar(workEvents) {
+  const el = document.getElementById('mini-calendar');
+  const weekStart = getWeekStartOffset();
+  const firstDayRaw = new Date(selectedYear, selectedMonth, 1).getDay();
+  const firstDay = (firstDayRaw - weekStart + 7) % 7;
+  const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+  const hoursByDay = {};
+  workEvents.forEach(event => {
+    const day = event.date.getDate();
+    hoursByDay[day] = (hoursByDay[day] || 0) + event.hours;
+  });
+
+  const allDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(allDays[(i + weekStart) % 7]);
+
+  let html = '<div class="mini-cal-grid">';
+  days.forEach(d => { html += '<div class="mini-cal-header">' + d + '</div>'; });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="mini-cal-day empty"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const hasEvent = hoursByDay[d];
+    html += '<div class="mini-cal-day' + (hasEvent ? ' has-event' : '') + '">';
+    html += d;
+    if (hasEvent) html += '<span class="day-hours">' + formatHours(hoursByDay[d]) + '</span>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function getWeeksForMonth(workEvents) {
+  const firstOfMonth = new Date(selectedYear, selectedMonth, 1);
+  const lastOfMonth = new Date(selectedYear, selectedMonth + 1, 0);
+  const weeks = [];
+  const weekStartDay = getWeekStartOffset();
+
+  let weekStart = new Date(firstOfMonth);
+  const dayOffset = (weekStart.getDay() - weekStartDay + 7) % 7;
+  weekStart.setDate(weekStart.getDate() - dayOffset);
+
+  let weekNum = 1;
+  while (weekStart <= lastOfMonth) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    const hours = workEvents
+      .filter(e => {
+        const d = e.date;
+        return d >= weekStart && d <= weekEnd;
+      })
+      .reduce((sum, e) => sum + e.hours, 0);
+
+    const displayStart = weekStart < firstOfMonth ? firstOfMonth : weekStart;
+    const displayEnd = weekEnd > lastOfMonth ? lastOfMonth : weekEnd;
+
+    weeks.push({
+      num: weekNum++,
+      start: new Date(displayStart),
+      end: new Date(displayEnd),
+      hours
+    });
+
+    weekStart = new Date(weekStart);
+    weekStart.setDate(weekStart.getDate() + 7);
+  }
+
+  return weeks;
+}
+
+function renderWeeklySummary(workEvents) {
+  const el = document.getElementById('weekly-summary');
+  const weeks = getWeeksForMonth(workEvents);
+
+  let html = '<div class="weekly-summary-header">';
+  html += '<h3>Weekly Breakdown</h3>';
+  html += '<button class="copy-btn" id="copy-weeks-btn" title="Copy to clipboard">';
+  html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  html += 'Copy</button></div>';
+
+  weeks.forEach(w => {
+    const startStr = formatDateShort(w.start);
+    const endStr = formatDateShort(w.end);
+    html += '<div class="week-row">';
+    html += '<span class="week-dates">' + startStr + ' – ' + endStr + '</span>';
+    html += '<span class="week-hours">' + formatHours(w.hours) + '</span>';
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+
+  document.getElementById('copy-weeks-btn').addEventListener('click', () => copyWeeklySummary(weeks));
+}
+
+function copyWeeklySummary(weeks) {
+  const lines = weeks.map(w => {
+    const startStr = formatDateShort(w.start);
+    const endStr = formatDateShort(w.end);
+    return startStr + ' - ' + endStr + ': ' + formatHours(w.hours);
+  });
+  lines.push('Total: ' + formatHours(weeks.reduce((sum, w) => sum + w.hours, 0)));
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.getElementById('copy-weeks-btn');
+    btn.classList.add('copied');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy';
+    }, 2000);
+  });
+}
+
+function formatDateShort(date) {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function roundDown15(date) {
